@@ -14,7 +14,7 @@ const CORS_ORIGIN = (process.env.CORS_ORIGIN ?? 'http://localhost:5173,http://lo
   .filter(Boolean);
 
 async function main(): Promise<void> {
-  const app = Fastify({ logger: true });
+  const app = Fastify({ logger: true, trustProxy: true });
   await app.register(cors, {
     origin: CORS_ORIGIN.length === 1 ? CORS_ORIGIN[0] : CORS_ORIGIN,
   });
@@ -43,7 +43,13 @@ async function main(): Promise<void> {
   await app.listen({ port: PORT, host: HOST });
 
   const io = new Server(app.server, {
-    cors: { origin: CORS_ORIGIN },
+    cors: {
+      origin: CORS_ORIGIN,
+      methods: ['GET', 'POST'],
+      credentials: true,
+    },
+    transports: ['websocket', 'polling'],
+    allowEIO3: true,
   });
 
   function emitToRoom(code: string, exceptSocket: string | null, build: (playerId: string) => ServerMessage): void {

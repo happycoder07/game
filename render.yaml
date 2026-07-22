@@ -1,0 +1,20 @@
+# Render Blueprint — Twenty-Nine game API (Socket.io)
+# https://render.com/docs/blueprint-spec
+services:
+  - type: web
+    name: twenty-nine-api
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile.server
+    dockerContext: .
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: HOST
+        value: 0.0.0.0
+      - key: DATABASE_URL
+        value: file:/tmp/twenty-nine.db
+      - key: CORS_ORIGIN
+        # Vercel frontend (comma-separate more origins if needed)
+        value: https://twenty-nine-ten.vercel.app,http://localhost:5173,http://localhost:8080

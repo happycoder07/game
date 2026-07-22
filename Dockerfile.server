@@ -1,0 +1,40 @@
+# Render / standalone production API (Socket.io + Prisma)
+FROM node:20-bookworm-slim AS deps
+WORKDIR /app
+COPY package.json package-lock.json ./
+COPY packages/core/package.json packages/core/
+COPY packages/shared/package.json packages/shared/
+COPY apps/cli/package.json apps/cli/
+COPY apps/server/package.json apps/server/
+COPY apps/client/package.json apps/client/
+RUN npm ci
+
+FROM deps AS build
+WORKDIR /app
+COPY . .
+RUN npm run build -w @twenty-nine/core \
+ && npm run build -w @twenty-nine/shared \
+ && npm run build -w @twenty-nine/server
+
+FROM node:20-bookworm-slim
+WORKDIR /app
+ENV NODE_ENV=production
+ENV PORT=3001
+ENV HOST=0.0.0.0
+ENV DATABASE_URL=file:/data/twenty-nine.db
+
+RUN apt-get update && apt-get install -y --no-install-recommends openssl ca-certificates \
+ && rm -rf /var/lib/apt/lists/* \
+ && mkdir -p /data
+
+COPY --from=build /app/package.json /app/package-lock.json ./
+COPY --from=build /app/node_modules ./node_modules
+COPY --from=build /app/packages/core ./packages/core
+COPY --from=build /app/packages/shared ./packages/shared
+COPY --from=build /app/apps/server ./apps/server
+
+WORKDIR /app/apps/server
+RUN npx prisma generate
+
+EXPOSE 3001
+CMD ["sh", "-c", "mkdir -p /data && npx prisma db push --skip-generate && node dist/index.js"]
