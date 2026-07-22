@@ -1,4 +1,5 @@
 import { motion } from 'framer-motion';
+import { useId } from 'react';
 import type { Rank, Suit } from '@twenty-nine/core';
 import { isRedSuit, suitSymbol } from '@twenty-nine/core';
 
@@ -14,6 +15,8 @@ interface PlayingCardProps {
   size?: CardSizeToken;
   /** Explicit width in px; height follows standard card aspect (5:7). */
   width?: number;
+  /** Disable hover/drag motion (e.g. trick pile / flying card). */
+  noMotion?: boolean;
   onClick?: () => void;
   onDragEnd?: () => void;
   draggable?: boolean;
@@ -43,10 +46,12 @@ export function PlayingCard({
   faceDown,
   size = 'md',
   width,
+  noMotion,
   onClick,
   onDragEnd,
   draggable,
 }: PlayingCardProps) {
+  const reactId = useId().replace(/:/g, '');
   const w = resolveCardWidth(size, width);
   const h = cardHeightForWidth(w);
   const font = Math.max(11, Math.round(w * 0.22));
@@ -55,31 +60,32 @@ export function PlayingCard({
   const red = !faceDown && isRedSuit(suit);
   const label = rank === '10' ? '10' : rank;
   const ink = red ? '#b33a3a' : '#1a1a14';
-  const backId = `back-${suit}-${rank}-${Math.round(w)}`;
+  const backId = `card-back-${reactId}`;
+  const interactive = !noMotion && !disabled && !faceDown;
 
   return (
     <motion.button
       type="button"
       aria-label={faceDown ? 'Face-down card' : `${rank} of ${suit}`}
-      disabled={disabled || faceDown}
+      disabled={disabled || faceDown || noMotion}
       onClick={onClick}
-      drag={draggable && !disabled ? 'y' : false}
-      dragConstraints={{ top: -Math.round(h * 0.85), bottom: 0 }}
-      dragElastic={0.1}
+      drag={draggable && interactive ? 'y' : false}
+      dragConstraints={{ top: -Math.round(h * 0.45), bottom: 0 }}
+      dragElastic={0.12}
       onDragEnd={(_, info) => {
-        if (info.offset.y < -50) onDragEnd?.();
+        if (info.offset.y < -48) onDragEnd?.();
       }}
-      whileHover={disabled || faceDown ? undefined : { y: -Math.round(h * 0.12), scale: 1.04 }}
-      whileTap={disabled || faceDown ? undefined : { scale: 0.97 }}
-      animate={{ y: selected ? -Math.round(h * 0.14) : 0 }}
+      whileHover={interactive ? { y: -Math.round(h * 0.1), scale: 1.03 } : undefined}
+      whileTap={interactive ? { scale: 0.97 } : undefined}
+      animate={noMotion ? undefined : { y: selected ? -Math.round(h * 0.12) : 0 }}
       transition={{ type: 'spring', stiffness: 380, damping: 26 }}
       className={`card-shadow relative rounded-[10px] border select-none focus:outline-none will-change-transform overflow-visible ${
-        disabled ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'
+        disabled && !noMotion ? 'opacity-40 cursor-not-allowed' : noMotion ? 'cursor-default' : 'cursor-pointer'
       } ${selected ? 'ring-2 ring-gold' : ''}`}
       style={{ width: w, height: h }}
     >
       {faceDown ? (
-        <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} className="block overflow-visible">
+        <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} className="block">
           <defs>
             <pattern id={backId} width="8" height="8" patternUnits="userSpaceOnUse">
               <path d="M0 8L8 0" stroke="#2a5080" strokeWidth="1" />
@@ -117,10 +123,9 @@ export function PlayingCard({
           </text>
         </svg>
       ) : (
-        <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} className="block overflow-visible">
+        <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} className="block">
           <rect width={w} height={h} rx={rx} fill="#f3efe6" stroke="#d4cbb8" />
 
-          {/* Top-left index — enough inset so rounded corner never clips "10" */}
           <g>
             <text
               x={inset}
@@ -143,7 +148,6 @@ export function PlayingCard({
             </text>
           </g>
 
-          {/* Center pip */}
           <text
             x="50%"
             y="52%"
@@ -155,7 +159,6 @@ export function PlayingCard({
             {suitSymbol(suit)}
           </text>
 
-          {/* Bottom-right: mirror of top-left (avoids rotate+textAnchor clipping) */}
           <g transform={`translate(${w}, ${h}) rotate(180)`}>
             <text
               x={inset}

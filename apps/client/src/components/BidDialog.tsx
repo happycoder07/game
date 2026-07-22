@@ -1,5 +1,12 @@
 import { motion, AnimatePresence, useDragControls } from 'framer-motion';
-import { GamePhase, Suit, suitSymbol, suitDisplayName } from '@twenty-nine/core';
+import {
+  GamePhase,
+  Suit,
+  suitSymbol,
+  suitDisplayName,
+  seatDisplayName,
+  teamForSeat,
+} from '@twenty-nine/core';
 import { useGameStore } from '../store/gameStore';
 import { legalBidsFromSnapshot } from '../lib/legalFromSnapshot';
 
@@ -10,6 +17,8 @@ import { legalBidsFromSnapshot } from '../lib/legalFromSnapshot';
 export function BidDialog() {
   const snapshot = useGameStore((s) => s.snapshot);
   const engine = useGameStore((s) => s.engine);
+  const room = useGameStore((s) => s.room);
+  const mode = useGameStore((s) => s.mode);
   const you = useGameStore((s) => s.you);
   const bid = useGameStore((s) => s.bid);
   const pass = useGameStore((s) => s.pass);
@@ -17,6 +26,8 @@ export function BidDialog() {
   const passChallenge = useGameStore((s) => s.passChallenge);
   const double = useGameStore((s) => s.double);
   const redouble = useGameStore((s) => s.redouble);
+  const leave = useGameStore((s) => s.leave);
+  const startLocal = useGameStore((s) => s.startLocal);
   const dragControls = useDragControls();
 
   if (!snapshot) return null;
@@ -41,6 +52,11 @@ export function BidDialog() {
     bidding || trumpSel || challenge || roundEnd || finished || waitingBid;
   if (!show) return null;
 
+  const actorName = (seat: typeof you) => {
+    const fromRoom = room?.players.find((p) => p.seat === seat);
+    return fromRoom?.name ?? snapshot.players[seat]?.name ?? seatDisplayName(seat);
+  };
+
   const title = bidding
     ? 'Select bid'
     : trumpSel
@@ -54,6 +70,21 @@ export function BidDialog() {
             : 'Bidding';
 
   const panelKey = `${snapshot.phase}-${snapshot.auction.toAct}-${snapshot.roundNumber}`;
+
+  const myTeam = teamForSeat(you);
+  const canDouble =
+    challenge &&
+    snapshot.rules.allowDouble &&
+    !snapshot.challenge.doubled &&
+    snapshot.contractTeam != null &&
+    myTeam !== snapshot.contractTeam;
+  const canRedouble =
+    challenge &&
+    snapshot.rules.allowRedouble &&
+    snapshot.challenge.doubled &&
+    !snapshot.challenge.redoubled &&
+    snapshot.contractTeam != null &&
+    myTeam === snapshot.contractTeam;
 
   return (
     <AnimatePresence>
@@ -90,7 +121,7 @@ export function BidDialog() {
           <div className="p-4 md:p-5">
             {waitingBid && !bidding && (
               <p className="text-sm text-center opacity-70">
-                Waiting for {snapshot.auction.toAct} to bid…
+                Waiting for {actorName(snapshot.auction.toAct)} to bid…
                 {snapshot.auction.currentBid != null && (
                   <span className="ml-2 font-semibold">
                     Current {snapshot.auction.currentBid}
@@ -151,20 +182,24 @@ export function BidDialog() {
 
             {challenge && (
               <div className="flex flex-col gap-2">
-                <button
-                  type="button"
-                  onClick={() => double()}
-                  className="py-2.5 rounded-xl bg-danger text-cream font-semibold"
-                >
-                  Double
-                </button>
-                <button
-                  type="button"
-                  onClick={() => redouble()}
-                  className="py-2.5 rounded-xl bg-gold text-ink font-semibold"
-                >
-                  Redouble
-                </button>
+                {canDouble && (
+                  <button
+                    type="button"
+                    onClick={() => double()}
+                    className="py-2.5 rounded-xl bg-danger text-cream font-semibold"
+                  >
+                    Double
+                  </button>
+                )}
+                {canRedouble && (
+                  <button
+                    type="button"
+                    onClick={() => redouble()}
+                    className="py-2.5 rounded-xl bg-gold text-ink font-semibold"
+                  >
+                    Redouble
+                  </button>
+                )}
                 <button
                   type="button"
                   onClick={() => passChallenge()}
@@ -188,13 +223,23 @@ export function BidDialog() {
                   Winner: <strong>{snapshot.scoreboard.winner}</strong>
                 </p>
                 <ScoreSummary />
-                <button
-                  type="button"
-                  onClick={() => useGameStore.getState().startLocal()}
-                  className="mt-3 w-full py-3 rounded-xl bg-felt text-cream font-semibold"
-                >
-                  Play again
-                </button>
+                {mode === 'online' ? (
+                  <button
+                    type="button"
+                    onClick={() => leave()}
+                    className="mt-3 w-full py-3 rounded-xl bg-felt text-cream font-semibold"
+                  >
+                    Leave room
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => startLocal()}
+                    className="mt-3 w-full py-3 rounded-xl bg-felt text-cream font-semibold"
+                  >
+                    Play again
+                  </button>
+                )}
               </>
             )}
           </div>

@@ -27,7 +27,7 @@ export const AI_DELAY = {
   /** Thinking time before an AI card is played. */
   play: 1400,
   /** Time to watch the card fly onto the table after it is played. */
-  throwWatch: 1100,
+  throwWatch: 1000,
   /** Hold completed trick before the next lead. */
   afterTrick: 2500,
 } as const;
@@ -43,11 +43,13 @@ interface GameStore {
   connected: boolean;
   room: RoomInfo | null;
   playerId: string | null;
-  chat: { name: string; text: string; at: number }[];
+  chat: { name: string; text: string; at: number; playerId?: string }[];
   error: string | null;
   aiLevel: AiLevel;
   toast: string | null;
   aiThinking: boolean;
+  /** Online: card id waiting for server GameState ack (blocks double-play / flicker). */
+  pendingPlay: string | null;
 
   setDark: (v: boolean) => void;
   setAiLevel: (l: AiLevel) => void;
@@ -257,6 +259,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
   aiLevel: 'medium',
   toast: null,
   aiThinking: false,
+  pendingPlay: null,
 
   setDark: (v) => {
     document.documentElement.classList.toggle('dark', v);
@@ -267,11 +270,23 @@ export const useGameStore = create<GameStore>((set, get) => ({
 
   startLocal: (level) => {
     aiGeneration++; // cancel any prior AI loop
+    // Tear down any online session so Play again / local start can't bleed socket state
+    const { socket } = get();
+    if (socket) {
+      try {
+        socket.removeAllListeners();
+        socket.disconnect();
+      } catch {
+        /* ignore */
+      }
+    }
+    clearSession();
     const lv = level ?? get().aiLevel;
     const engine = makeLocalEngine(lv);
     const events: GameEvent[] = [];
     engine.subscribe((e) => {
       events.push(e);
+      set({ events: [...events] });
       if (events.length > 100) events.shift();
     });
     engine.startRound();
@@ -283,7 +298,12 @@ export const useGameStore = create<GameStore>((set, get) => ({
       events: [...events],
       error: null,
       room: null,
+      playerId: null,
+      socket: null,
+      connected: false,
+      chat: [],
       aiThinking: false,
+      pendingPlay: null,
     });
     kickAi(get, set);
   },
@@ -325,17 +345,22 @@ export const useGameStore = create<GameStore>((set, get) => ({
     kickAi(get, set);
   },
   playCard: (cardId) => {
-    const { mode, engine, send } = get();
+    const { mode, engine, send, pendingPlay } = get();
     if (mode === 'online') {
+      if (pendingPlay) return;
+      set({ pendingPlay: cardId });
       send({ type: 'PlayCard', cardId });
       return;
     }
-    engine?.playCard(Seat.South, cardId);
+    if (!engine) return;
+    const tricksBefore = engine.getState().tricks.length;
+    engine.playCard(Seat.South, cardId);
     get().refresh();
-    // Let the human throw animation finish before AI responds
+    const trickDone = engine.getState().tricks.length > tricksBefore;
+    const delay = trickDone ? AI_DELAY.afterTrick : AI_DELAY.throwWatch;
     window.setTimeout(() => {
       if (get().engine === engine) kickAi(get, set);
-    }, AI_DELAY.throwWatch);
+    }, delay);
   },
   revealTrump: () => {
     const { mode, engine, send } = get();
@@ -401,6 +426,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
     get().engine?.undo();
     set({ aiThinking: false });
     get().refresh();
+    kickAi(get, set);
   },
 
   leave: () => {
@@ -422,6 +448,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
       mode: 'local',
       error: null,
       aiThinking: false,
+      pendingPlay: null,
     });
   },
 
@@ -474,6 +501,8 @@ export const useGameStore = create<GameStore>((set, get) => ({
             patch.room = msg.room;
             patch.playerId = msg.playerId;
             patch.mode = 'online';
+            patch.engine = null;
+            patch.pendingPlay = null;
             if (msg.state) patch.snapshot = msg.state;
             persistSession(msg.playerId, msg.room.code);
             break;
@@ -483,26 +512,47 @@ export const useGameStore = create<GameStore>((set, get) => ({
           case 'PlayerJoined':
             patch.toast = `${msg.player.name} joined`;
             break;
-          case 'PlayerLeft':
+          case 'PlayerLeft': {
             patch.toast = 'A player disconnected';
+            const room = get().room;
+            if (room) {
+              patch.room = {
+                ...room,
+                players: room.players.map((p) =>
+                  p.id === msg.playerId ? { ...p, connected: false } : p,
+                ),
+                spectators: room.spectators.map((p) =>
+                  p.id === msg.playerId ? { ...p, connected: false } : p,
+                ),
+              };
+            }
             break;
+          }
           case 'GameState':
           case 'SyncState':
             patch.snapshot = msg.state;
             if (msg.you) patch.you = msg.you;
             patch.mode = 'online';
+            patch.engine = null; // never keep a local engine over online state
+            patch.pendingPlay = null;
             break;
           case 'RoundEnd':
             patch.toast = msg.summary;
+            patch.pendingPlay = null;
             break;
           case 'GameFinished':
             patch.toast = `Match over — winner ${msg.winner}`;
+            patch.pendingPlay = null;
             break;
           case 'ChatMessage':
-            patch.chat = [...get().chat, { name: msg.name, text: msg.text, at: msg.at }];
+            patch.chat = [
+              ...get().chat,
+              { name: msg.name, text: msg.text, at: msg.at, playerId: msg.playerId },
+            ];
             break;
           case 'Error':
             patch.error = msg.message;
+            patch.pendingPlay = null;
             break;
           default:
             break;
@@ -515,7 +565,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
         }
       });
 
-      set({ socket, mode: 'online' });
+      set({ socket, connected: false });
       if (socket.connected) onConnect();
     });
   },

@@ -3,6 +3,7 @@ import { Lobby } from './components/Lobby';
 import { GameTable } from './components/GameTable';
 import { BidDialog } from './components/BidDialog';
 import { Scoreboard } from './components/Scoreboard';
+import { ChatPanel } from './components/ChatPanel';
 import { useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 
@@ -17,9 +18,6 @@ export default function App() {
   const undo = useGameStore((s) => s.undo);
   const leave = useGameStore((s) => s.leave);
   const clearError = useGameStore((s) => s.clearError);
-  const chat = useGameStore((s) => s.chat);
-  const sendChat = useGameStore((s) => s.sendChat);
-  const [chatText, setChatText] = useState('');
   const [showSide, setShowSide] = useState(false);
 
   const inGame = Boolean(snapshot);
@@ -38,32 +36,77 @@ export default function App() {
             {aiThinking && ' · AI'}
           </span>
         </div>
-        <div className="flex gap-1.5">
+        <div className="flex items-center gap-1.5">
           {inGame && (
             <button
               type="button"
               onClick={() => setShowSide((v) => !v)}
-              className="text-xs px-2.5 py-1 rounded-full bg-white/10 hover:bg-white/20 xl:hidden"
+              className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-full bg-white/10 hover:bg-white/20 xl:hidden"
+              aria-label={showSide ? 'Show table' : 'Show score'}
+              title={showSide ? 'Table' : 'Score'}
             >
-              {showSide ? 'Table' : 'Score'}
+              {showSide ? (
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden className="opacity-90">
+                  <ellipse cx="12" cy="12" rx="9" ry="6" stroke="currentColor" strokeWidth="1.8" />
+                  <path d="M3 12h18" stroke="currentColor" strokeWidth="1.8" />
+                </svg>
+              ) : (
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden className="opacity-90">
+                  <path d="M4 6h16M4 12h16M4 18h10" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+                </svg>
+              )}
+              <span>{showSide ? 'Table' : 'Score'}</span>
             </button>
           )}
           {inGame && mode === 'local' && (
             <button
               type="button"
               onClick={() => undo()}
-              className="text-xs px-2.5 py-1 rounded-full bg-white/10 hover:bg-white/20"
+              className="inline-flex items-center justify-center w-9 h-9 rounded-full bg-white/10 hover:bg-white/20 text-cream"
+              aria-label="Undo"
+              title="Undo"
             >
-              Undo
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>
+                <path
+                  d="M9.5 7.5 6 11l3.5 3.5"
+                  stroke="currentColor"
+                  strokeWidth="1.9"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+                <path
+                  d="M6 11h8.5a4.5 4.5 0 1 1 0 9H12"
+                  stroke="currentColor"
+                  strokeWidth="1.9"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
             </button>
           )}
           {(inGame || inLobbyRoom) && (
             <button
               type="button"
               onClick={() => leave()}
-              className="text-xs px-2.5 py-1 rounded-full bg-white/10 hover:bg-white/20"
+              className="inline-flex items-center justify-center w-9 h-9 rounded-full bg-white/10 hover:bg-white/20 text-cream hover:text-danger"
+              aria-label="Leave"
+              title="Leave"
             >
-              Leave
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>
+                <path
+                  d="M10 7V5.8A1.8 1.8 0 0 1 11.8 4h6.4A1.8 1.8 0 0 1 20 5.8v12.4a1.8 1.8 0 0 1-1.8 1.8h-6.4A1.8 1.8 0 0 1 10 18.2V17"
+                  stroke="currentColor"
+                  strokeWidth="1.9"
+                  strokeLinecap="round"
+                />
+                <path
+                  d="M13 12H4m0 0 2.8-2.8M4 12l2.8 2.8"
+                  stroke="currentColor"
+                  strokeWidth="1.9"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
             </button>
           )}
         </div>
@@ -106,9 +149,9 @@ export default function App() {
       )}
 
       {inGame && (
-        <main className="relative z-10 flex-1 min-h-0 flex gap-2 px-2 pb-2">
+        <main className="relative z-10 flex-1 min-h-0 flex gap-2 px-2 pb-2 overflow-visible">
           <motion.div
-            className={`min-h-0 min-w-0 ${showSide ? 'hidden' : 'flex'} xl:flex flex-1`}
+            className={`min-h-0 min-w-0 overflow-visible ${showSide ? 'hidden' : 'flex'} xl:flex flex-1`}
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
           >
@@ -118,44 +161,10 @@ export default function App() {
           <div
             className={`min-h-0 overflow-y-auto ${
               showSide ? 'flex' : 'hidden'
-            } xl:flex w-full xl:w-64 shrink-0 flex-col gap-2`}
+            } xl:flex w-full xl:w-72 shrink-0 flex-col gap-2`}
           >
             <Scoreboard />
-            {mode === 'online' && (
-              <div className="bg-black/30 backdrop-blur rounded-2xl p-3 text-cream border border-white/10">
-                <div className="text-xs font-semibold mb-2 tracking-wide uppercase opacity-80">
-                  Chat
-                </div>
-                <ul className="max-h-28 overflow-y-auto text-xs space-y-1 mb-2">
-                  {chat.length === 0 && <li className="opacity-40">Say hello…</li>}
-                  {chat.map((c, i) => (
-                    <li key={`${c.at}-${i}`}>
-                      <strong className="text-gold-soft">{c.name}</strong>: {c.text}
-                    </li>
-                  ))}
-                </ul>
-                <form
-                  onSubmit={(e) => {
-                    e.preventDefault();
-                    if (!chatText.trim()) return;
-                    sendChat(chatText.trim());
-                    setChatText('');
-                  }}
-                  className="flex gap-2"
-                >
-                  <input
-                    className="flex-1 rounded-xl bg-cream text-ink px-2 py-1 text-sm"
-                    value={chatText}
-                    onChange={(e) => setChatText(e.target.value)}
-                    aria-label="Chat message"
-                    placeholder="Message"
-                  />
-                  <button type="submit" className="text-xs px-2 bg-gold text-ink rounded-xl font-bold">
-                    Send
-                  </button>
-                </form>
-              </div>
-            )}
+            {mode === 'online' && <ChatPanel />}
           </div>
 
           <BidDialog />
