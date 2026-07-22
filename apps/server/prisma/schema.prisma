@@ -1,0 +1,38 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model GameRecord {
+  id        String   @id @default(cuid())
+  roomCode  String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  finished  Boolean  @default(false)
+  winner    String?
+  /// Full serialized GameState JSON
+  stateJson String
+  eventsJson String @default("[]")
+  playersJson String @default("[]")
+}
+
+model PlayerProfile {
+  id        String   @id @default(cuid())
+  name      String
+  createdAt DateTime @default(now())
+  gamesPlayed Int    @default(0)
+  gamesWon    Int    @default(0)
+}
+
+model ChatLog {
+  id        String   @id @default(cuid())
+  roomCode  String
+  playerId  String
+  name      String
+  text      String
+  createdAt DateTime @default(now())
+}

@@ -1,0 +1,22 @@
+{
+  "name": "@twenty-nine/cli",
+  "version": "1.0.0",
+  "type": "module",
+  "bin": {
+    "twenty-nine": "./dist/main.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "start": "tsx src/main.ts",
+    "dev": "tsx src/main.ts"
+  },
+  "dependencies": {
+    "@twenty-nine/core": "*",
+    "chalk": "^5.4.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.4",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.3"
+  }
+}

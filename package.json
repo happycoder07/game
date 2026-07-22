@@ -1,0 +1,29 @@
+{
+  "name": "twenty-nine",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Production-quality Twenty-Nine (29) card game — engine, CLI, multiplayer, AI",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "build": "npm run build -w @twenty-nine/core && npm run build -w @twenty-nine/shared && npm run build -w @twenty-nine/cli && npm run build -w @twenty-nine/server && npm run build -w @twenty-nine/client",
+    "build:core": "npm run build -w @twenty-nine/core",
+    "test": "npm run test -w @twenty-nine/core",
+    "test:e2e": "npm run test:e2e -w @twenty-nine/client",
+    "cli": "npm run start -w @twenty-nine/cli",
+    "dev:server": "npm run dev -w @twenty-nine/server",
+    "dev:client": "npm run dev -w @twenty-nine/client",
+    "dev": "npm run build:core && concurrently -n server,client -c blue,green \"npm run dev:server\" \"npm run dev:client\"",
+    "sim": "npm run sim -w @twenty-nine/core",
+    "lint": "npm run lint -w @twenty-nine/core --if-present"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2",
+    "typescript": "^5.7.3"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

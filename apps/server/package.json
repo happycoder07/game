@@ -1,0 +1,27 @@
+{
+  "name": "@twenty-nine/server",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsx watch src/index.ts",
+    "start": "node dist/index.js",
+    "db:push": "prisma db push",
+    "db:generate": "prisma generate"
+  },
+  "dependencies": {
+    "@twenty-nine/core": "*",
+    "@twenty-nine/shared": "*",
+    "@fastify/cors": "^10.0.2",
+    "@prisma/client": "^6.3.1",
+    "fastify": "^5.2.1",
+    "socket.io": "^4.8.1",
+    "nanoid": "^5.0.9"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.4",
+    "prisma": "^6.3.1",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.3"
+  }
+}
