@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import { useGameStore } from '../store/gameStore';
 import { ALL_SEATS, seatDisplayName, type AiLevel } from '@twenty-nine/core';
@@ -14,18 +14,35 @@ export function Lobby() {
   const connected = useGameStore((s) => s.connected);
   const aiLevel = useGameStore((s) => s.aiLevel);
   const setAiLevel = useGameStore((s) => s.setAiLevel);
-  const [name, setName] = useState(() => localStorage.getItem('tn_name') || 'Player');
+  const [name, setName] = useState(() => localStorage.getItem('tn_name') || '');
   const [code, setCode] = useState('');
   const [copied, setCopied] = useState(false);
 
+  const me =
+    room && playerId
+      ? (room.players.find((p) => p.id === playerId) ??
+        room.spectators.find((p) => p.id === playerId))
+      : undefined;
+
+  useEffect(() => {
+    if (me?.name && !name.trim()) {
+      setName(me.name);
+      localStorage.setItem('tn_name', me.name);
+    }
+  }, [me?.name, name]);
+
   const saveName = (n: string) => {
     setName(n);
-    localStorage.setItem('tn_name', n);
+    localStorage.setItem('tn_name', n.trim());
   };
+
+  const displayName = name.trim();
+  const canUseName = displayName.length >= 1;
 
   if (room) {
     const isHost = playerId === room.hostId;
-    const mySeat = room.players.find((p) => p.id === playerId)?.seat;
+    const mySeat = me?.seat ?? null;
+    const humans = room.players.filter((p) => p.kind === 'human');
 
     return (
       <motion.div
@@ -64,6 +81,66 @@ export function Lobby() {
             </button>
           </div>
 
+          <label className="block mb-5">
+            <span className="text-xs uppercase tracking-wide opacity-60">Your name</span>
+            <div className="mt-1.5 flex gap-2">
+              <input
+                className="flex-1 rounded-xl bg-white border border-ink/10 px-3 py-2.5 font-semibold"
+                value={name}
+                onChange={(e) => saveName(e.target.value)}
+                onBlur={() => {
+                  if (!canUseName) return;
+                  if (me && me.name !== displayName) {
+                    send({ type: 'SetName', name: displayName });
+                  }
+                }}
+                placeholder="Enter your name"
+                aria-label="Your name"
+                maxLength={24}
+              />
+              <button
+                type="button"
+                disabled={!canUseName || me?.name === displayName}
+                onClick={() => send({ type: 'SetName', name: displayName })}
+                className="px-4 rounded-xl bg-felt text-cream font-semibold disabled:opacity-40"
+              >
+                Save
+              </button>
+            </div>
+          </label>
+
+          <div className="mb-5 rounded-2xl bg-white/60 border border-ink/10 p-3">
+            <p className="text-xs uppercase tracking-wide opacity-60 mb-2">In this room</p>
+            <ul className="space-y-1.5">
+              {humans.map((p) => (
+                <li key={p.id} className="flex items-center justify-between text-sm">
+                  <span className="font-semibold">
+                    {p.name || 'Unnamed'}
+                    {p.id === playerId && <span className="opacity-50 font-normal"> (you)</span>}
+                    {p.id === room.hostId && (
+                      <span className="ml-2 text-[10px] uppercase tracking-wide bg-felt text-cream px-1.5 py-0.5 rounded">
+                        Host
+                      </span>
+                    )}
+                  </span>
+                  <span className="text-xs opacity-60">
+                    {p.seat ? seatDisplayName(p.seat) : 'Picking seat…'}
+                    {!p.connected && ' · offline'}
+                  </span>
+                </li>
+              ))}
+              {room.spectators.map((p) => (
+                <li key={p.id} className="flex items-center justify-between text-sm opacity-70">
+                  <span>
+                    {p.name || 'Unnamed'}
+                    {p.id === playerId && ' (you)'}
+                  </span>
+                  <span className="text-xs">Spectating</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+
           <div className="grid grid-cols-2 gap-3 mb-6">
             {ALL_SEATS.map((seat) => {
               const occupant = room.players.find((p) => p.seat === seat);
@@ -95,14 +172,18 @@ export function Lobby() {
                         )}
                       </div>
                       <div className="opacity-60 text-xs mt-0.5">
-                        {occupant.kind === 'ai' ? `AI · ${occupant.aiLevel}` : occupant.connected ? 'Online' : 'Offline'}
+                        {occupant.kind === 'ai'
+                          ? `AI · ${occupant.aiLevel}`
+                          : occupant.connected
+                            ? 'Online'
+                            : 'Offline'}
                       </div>
                     </div>
                   ) : (
                     <div className="flex flex-col gap-2">
                       <button
                         type="button"
-                        disabled={Boolean(mySeat)}
+                        disabled={Boolean(mySeat) || me?.isSpectator}
                         onClick={() => send({ type: 'Sit', seat })}
                         className="text-sm py-2 rounded-lg bg-felt text-cream font-semibold disabled:opacity-40"
                       >
@@ -132,12 +213,6 @@ export function Lobby() {
               );
             })}
           </div>
-
-          {room.spectators.length > 0 && (
-            <p className="text-xs opacity-60 mb-4">
-              Spectators: {room.spectators.map((s) => s.name).join(', ')}
-            </p>
-          )}
 
           {isHost ? (
             <button
@@ -216,17 +291,26 @@ export function Lobby() {
           transition={{ delay: 0.2 }}
         >
           <h2 className="font-display text-2xl mb-3">Multiplayer</h2>
-          <input
-            className="w-full mb-3 rounded-xl bg-cream text-ink px-3 py-2.5 font-semibold"
-            value={name}
-            onChange={(e) => saveName(e.target.value)}
-            placeholder="Your name"
-            aria-label="Your name"
-          />
+          <label className="block text-sm mb-3 opacity-90">
+            Your name
+            <input
+              className="mt-1.5 w-full rounded-xl bg-cream text-ink px-3 py-2.5 font-semibold"
+              value={name}
+              onChange={(e) => saveName(e.target.value)}
+              placeholder="Enter your name"
+              aria-label="Your name"
+              maxLength={24}
+              autoComplete="nickname"
+            />
+          </label>
+          {!canUseName && (
+            <p className="text-xs text-gold-soft mb-3 -mt-1">Add a name before creating or joining.</p>
+          )}
           <button
             type="button"
-            onClick={() => void createRoom(name || 'Host')}
-            className="w-full mb-4 py-3.5 rounded-2xl bg-felt-light text-cream font-bold hover:bg-felt transition"
+            disabled={!canUseName}
+            onClick={() => void createRoom(displayName)}
+            className="w-full mb-4 py-3.5 rounded-2xl bg-felt-light text-cream font-bold hover:bg-felt transition disabled:opacity-40"
           >
             Create room
           </button>
@@ -241,17 +325,18 @@ export function Lobby() {
             />
             <button
               type="button"
-              onClick={() => void joinRoom(code, name || 'Guest')}
-              className="px-5 rounded-xl bg-cream text-ink font-bold"
+              disabled={!canUseName || code.trim().length < 4}
+              onClick={() => void joinRoom(code, displayName)}
+              className="px-5 rounded-xl bg-cream text-ink font-bold disabled:opacity-40"
             >
               Join
             </button>
           </div>
           <button
             type="button"
-            onClick={() => void joinRoom(code, name || 'Guest', true)}
+            onClick={() => void joinRoom(code, displayName, true)}
             className="mt-3 w-full text-sm opacity-80 underline disabled:opacity-40"
-            disabled={code.trim().length < 4}
+            disabled={!canUseName || code.trim().length < 4}
           >
             Join as spectator
           </button>

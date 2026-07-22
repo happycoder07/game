@@ -88,21 +88,25 @@ export function decideMedium(engine: GameEngine, seat: Seat, rng = Math.random):
       const legal = engine.getLegalBids(seat);
       if (legal.length === 0) return { command: 'pass' };
 
+      // First deal is only 4 cards — scale thresholds down so bots actually open
+      const partial = hand.length <= 4;
+      const openFloor = partial ? 4.5 : 10;
+      const raiseMargin = partial ? 1 : 2;
+
       const target = Math.min(
         state.rules.maxBid,
-        Math.max(state.rules.minBid, Math.floor(strength)),
+        Math.max(state.rules.minBid, Math.floor(strength) + (partial ? 8 : 0)),
       );
       const current = state.auction.currentBid;
 
       if (current === null) {
-        // Open at minBid whenever hand has reasonable strength
-        if (strength >= 10) {
+        if (strength >= openFloor || (partial && rng() < 0.55)) {
           return { command: 'bid', value: legal[0]! };
         }
         return { command: 'pass' };
       }
       const raiseCandidates = legal.filter((v) => v <= target);
-      if (raiseCandidates.length > 0 && strength >= current + 2) {
+      if (raiseCandidates.length > 0 && strength + (partial ? 8 : 0) >= current + raiseMargin) {
         return { command: 'bid', value: raiseCandidates[0]! };
       }
       return { command: 'pass' };
@@ -223,15 +227,16 @@ export function decideHard(engine: GameEngine, seat: Seat, rng = Math.random): A
       const legal = engine.getLegalBids(seat);
       if (legal.length === 0) return { command: 'pass' };
       const current = state.auction.currentBid;
-      const aggressive = Math.floor(est);
+      const partial = hand.length <= 4;
+      // With 4 cards, project toward a full-hand bid scale
+      const aggressive = Math.floor(est) + (partial ? 9 : 0);
       if (current === null) {
-        if (aggressive >= state.rules.minBid) {
+        if (aggressive >= state.rules.minBid || (partial && est >= 4 && rng() < 0.65)) {
           return { command: 'bid', value: state.rules.minBid };
         }
         return aggressive >= 13 ? { command: 'bid', value: state.rules.minBid } : { command: 'pass' };
       }
       if (aggressive > current && legal[0]! <= aggressive) {
-        // Bid minimum raise only if EV positive
         if (aggressive >= current + 1) return { command: 'bid', value: legal[0]! };
       }
       return { command: 'pass' };

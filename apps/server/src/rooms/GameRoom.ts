@@ -19,6 +19,11 @@ import type {
 
 const codeGen = customAlphabet('ABCDEFGHJKLMNPQRSTUVWXYZ23456789', 6);
 
+function sanitizeName(name: string): string {
+  const trimmed = name.replace(/\s+/g, ' ').trim().slice(0, 24);
+  return trimmed || 'Guest';
+}
+
 export interface RoomPlayer {
   id: string;
   name: string;
@@ -69,10 +74,14 @@ export class GameRoom {
   }
 
   addPlayer(id: string, name: string, socketId: string, asSpectator: boolean): RoomPlayer {
-    if (asSpectator || this.players.length >= 4) {
+    const displayName = sanitizeName(name);
+
+    // Explicit spectator, or already 4 humans → watch only
+    const humanCount = this.players.filter((p) => p.kind === 'human').length;
+    if (asSpectator || humanCount >= 4) {
       const p: RoomPlayer = {
         id,
-        name,
+        name: displayName,
         seat: null,
         kind: 'human',
         connected: true,
@@ -82,11 +91,37 @@ export class GameRoom {
       this.spectators.push(p);
       return p;
     }
-    const taken = new Set(this.players.map((p) => p.seat));
-    const seat = ALL_SEATS.find((s) => !taken.has(s)) ?? null;
+
+    // Prefer an empty seat; otherwise displace an AI so friends aren't stuck as spectators
+    const occupied = new Set(
+      this.players.map((p) => p.seat).filter((s): s is Seat => s !== null),
+    );
+    let seat = ALL_SEATS.find((s) => !occupied.has(s)) ?? null;
+    if (!seat) {
+      const ai = this.players.find((p) => p.kind === 'ai' && p.seat);
+      if (ai?.seat) {
+        seat = ai.seat;
+        this.players = this.players.filter((p) => p.id !== ai.id);
+      }
+    }
+
+    if (!seat) {
+      const p: RoomPlayer = {
+        id,
+        name: displayName,
+        seat: null,
+        kind: 'human',
+        connected: true,
+        isSpectator: true,
+        socketId,
+      };
+      this.spectators.push(p);
+      return p;
+    }
+
     const p: RoomPlayer = {
       id,
-      name,
+      name: displayName,
       seat,
       kind: 'human',
       connected: true,
@@ -95,6 +130,14 @@ export class GameRoom {
     };
     this.players.push(p);
     return p;
+  }
+
+  setName(playerId: string, name: string): void {
+    const p =
+      this.players.find((x) => x.id === playerId) ||
+      this.spectators.find((x) => x.id === playerId);
+    if (!p || p.kind === 'ai') throw new Error('Cannot rename');
+    p.name = sanitizeName(name);
   }
 
   sit(playerId: string, seat: Seat): void {
@@ -167,7 +210,13 @@ export class GameRoom {
 
   handle(playerId: string, msg: ClientMessage): ServerMessage[] {
     const out: ServerMessage[] = [];
-    if (!this.engine && msg.type !== 'StartGame' && msg.type !== 'Sit' && msg.type !== 'SetAi') {
+    if (
+      !this.engine &&
+      msg.type !== 'StartGame' &&
+      msg.type !== 'Sit' &&
+      msg.type !== 'SetAi' &&
+      msg.type !== 'SetName'
+    ) {
       if (msg.type === 'SyncState') {
         return [{ type: 'RoomUpdated', room: this.toInfo() }];
       }
@@ -187,6 +236,9 @@ export class GameRoom {
         case 'SetAi':
           if (playerId !== this.hostId) throw new Error('Only host');
           this.setAi(msg.seat, msg.level);
+          return [{ type: 'RoomUpdated', room: this.toInfo() }];
+        case 'SetName':
+          this.setName(playerId, msg.name);
           return [{ type: 'RoomUpdated', room: this.toInfo() }];
         case 'Bid':
           this.assertSeat(seat);
@@ -279,6 +331,13 @@ export class GameRoom {
     return { type: 'GameState', state, you: seat };
   }
 
+  private actorIsAi(actor: Seat): boolean {
+    const roomPlayer = this.players.find((p) => p.seat === actor);
+    if (roomPlayer?.kind === 'ai') return true;
+    // Fallback to engine player kind (in case room roster drifted)
+    return this.engine?.getState().players[actor]?.kind === 'ai';
+  }
+
   /**
    * Run at most one AI action, then schedule the next with a delay
    * so clients can animate each thrown card.
@@ -302,15 +361,13 @@ export class GameRoom {
     else if (st.phase === GamePhase.Challenge) actor = st.toAct;
     else if (st.phase === GamePhase.Playing) actor = st.toAct;
     if (!actor) return;
-
-    const roomPlayer = this.players.find((p) => p.seat === actor);
-    if (!roomPlayer || roomPlayer.kind !== 'ai') return;
+    if (!this.actorIsAi(actor)) return;
 
     const delay =
       st.phase === GamePhase.Playing
         ? 1400
         : st.phase === GamePhase.Bidding
-          ? 1000
+          ? 900
           : 1100;
 
     this.aiTimer = setTimeout(() => {
@@ -335,19 +392,26 @@ export class GameRoom {
     else if (st.phase === GamePhase.TrumpSelection) actor = st.contractBidder;
     else if (st.phase === GamePhase.Challenge) actor = st.toAct;
     else if (st.phase === GamePhase.Playing) actor = st.toAct;
-    if (!actor) return;
+    if (!actor || !this.actorIsAi(actor)) return;
 
     const roomPlayer = this.players.find((p) => p.seat === actor);
-    if (!roomPlayer || roomPlayer.kind !== 'ai') return;
-
     const tricksBefore = st.tricks.length;
     const playsBefore = st.currentTrick?.plays.length ?? 0;
     const phaseBefore = st.phase;
-    const level = roomPlayer.aiLevel ?? 'medium';
+    const level =
+      roomPlayer?.aiLevel ??
+      this.engine.getState().players[actor]?.aiLevel ??
+      'medium';
     try {
       const d = decide(level, this.engine, actor);
       applyAiDecision(this.engine, actor, d);
-    } catch {
+    } catch (err) {
+      console.error('[AI] move failed', { actor, phase: st.phase, err });
+      // Keep the loop alive so the auction cannot hang forever
+      this.aiTimer = setTimeout(() => {
+        this.aiTimer = null;
+        this.scheduleAi();
+      }, 800);
       return;
     }
 
@@ -360,7 +424,14 @@ export class GameRoom {
       phaseBefore === GamePhase.Playing &&
       (trickDone || (after.currentTrick?.plays.length ?? 0) > playsBefore);
 
-    const watch = trickDone ? 2500 : cardPlayed ? 1100 : 400;
+    const watch =
+      phaseBefore === GamePhase.Bidding
+        ? 650
+        : trickDone
+          ? 2500
+          : cardPlayed
+            ? 1100
+            : 400;
     this.aiTimer = setTimeout(() => {
       this.aiTimer = null;
       this.scheduleAi();
@@ -414,7 +485,7 @@ export class RoomManager {
 
   create(hostName: string, socketId: string): GameRoom {
     const id = `p_${codeGen()}`;
-    const room = new GameRoom(id, hostName, socketId);
+    const room = new GameRoom(id, sanitizeName(hostName), socketId);
     this.rooms.set(room.code, room);
     return room;
   }

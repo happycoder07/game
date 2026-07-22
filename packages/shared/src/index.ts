@@ -31,6 +31,7 @@ export type ClientMessage =
   | { type: 'LeaveRoom' }
   | { type: 'Sit'; seat: Seat }
   | { type: 'SetAi'; seat: Seat; level: AiLevel }
+  | { type: 'SetName'; name: string }
   | { type: 'StartGame' }
   | { type: 'Bid'; value: number }
   | { type: 'Pass' }

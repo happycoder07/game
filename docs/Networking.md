@@ -35,3 +35,12 @@ docker compose up --build
 | Server (direct) | http://localhost:3001 |
 
 Nginx proxies `/socket.io`, `/api`, and `/health` to the server container. Game state SQLite lives in volume `tn-data`.
+
+## Hosted
+
+| Service | URL |
+|---------|-----|
+| Client (Vercel) | https://twenty-nine-ten.vercel.app |
+| API (Render) | https://twenty-nine-api.onrender.com |
+
+Set `VITE_SOCKET_URL=https://twenty-nine-api.onrender.com` for the client build, and `CORS_ORIGIN` on the API to the Vercel origin. Render free tier may cold-start after idle.

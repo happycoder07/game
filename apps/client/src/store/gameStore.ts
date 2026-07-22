@@ -509,9 +509,30 @@ export const useGameStore = create<GameStore>((set, get) => ({
           case 'RoomUpdated':
             patch.room = msg.room;
             break;
-          case 'PlayerJoined':
+          case 'PlayerJoined': {
             patch.toast = `${msg.player.name} joined`;
+            const room = get().room;
+            if (room) {
+              const withoutDup = {
+                players: room.players.filter(
+                  (p) =>
+                    p.id !== msg.player.id &&
+                    !(p.kind === 'ai' && msg.player.seat && p.seat === msg.player.seat),
+                ),
+                spectators: room.spectators.filter((p) => p.id !== msg.player.id),
+              };
+              patch.room = {
+                ...room,
+                players: msg.player.isSpectator
+                  ? withoutDup.players
+                  : [...withoutDup.players, msg.player],
+                spectators: msg.player.isSpectator
+                  ? [...withoutDup.spectators, msg.player]
+                  : withoutDup.spectators,
+              };
+            }
             break;
+          }
           case 'PlayerLeft': {
             patch.toast = 'A player disconnected';
             const room = get().room;
