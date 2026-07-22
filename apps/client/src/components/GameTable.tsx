@@ -6,6 +6,7 @@ import {
   suitDisplayName,
   seatDisplayName,
   ALL_SEATS,
+  isRedSuit,
   type Suit,
   type Rank,
   Card,
@@ -650,8 +651,38 @@ export function GameTable() {
           )}
         </AnimatePresence>
 
-        {/* Reveal — top-left corner */}
-        {!isSpectator && showActions && (
+        {/* Reveal / revealed trump — top-left (trump stays visible on mobile where score panel is hidden) */}
+        {showActions && snapshot.trump.revealed && snapshot.trump.suit && (
+          <motion.div
+            initial={{ scale: 0.7, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            transition={{ type: 'spring', stiffness: 340, damping: 20 }}
+            className="absolute top-3 left-3 z-30 pointer-events-none flex flex-col items-center justify-center gap-0.5 rounded-2xl bg-cream border border-gold/50 shadow-lg xl:hidden"
+            style={{
+              width: Math.round(cardWidths.actionH * 1.4),
+              minHeight: cardWidths.actionH,
+              padding: Math.round(6 * cardWidths.uiScale),
+              color: isRedSuit(snapshot.trump.suit as Suit) ? '#b33a3a' : '#1a1a14',
+            }}
+            title={`Trump: ${suitDisplayName(snapshot.trump.suit as Suit)}`}
+            aria-label={`Trump revealed: ${suitDisplayName(snapshot.trump.suit as Suit)}`}
+            role="status"
+          >
+            <span
+              className="leading-none font-display"
+              style={{ fontSize: Math.round(cardWidths.actionIcon * 1.55) }}
+            >
+              {suitSymbol(snapshot.trump.suit as Suit)}
+            </span>
+            <span
+              className="font-semibold tracking-wide uppercase"
+              style={{ fontSize: cardWidths.actionLabel, color: '#6b5a2a' }}
+            >
+              Trump
+            </span>
+          </motion.div>
+        )}
+        {!isSpectator && showActions && !snapshot.trump.revealed && (
           <button
             type="button"
             onClick={() => revealTrump()}
