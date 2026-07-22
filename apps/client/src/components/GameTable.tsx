@@ -274,19 +274,35 @@ export function GameTable() {
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if (!snapshot || snapshot.phase !== GamePhase.Playing) return;
-      if (e.key === 'r' || e.key === 'R') revealTrump();
-      if (e.key === 'm' || e.key === 'M') declareMarriage();
+      const t = e.target as HTMLElement | null;
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) {
+        return;
+      }
+      const st = useGameStore.getState();
+      const snap = st.snapshot;
+      if (!snap || snap.phase !== GamePhase.Playing) return;
+      const spectator = st.room?.spectators.some((s) => s.id === st.playerId);
+      if (spectator) return;
+      if (st.pendingPlay || flying) return;
+
+      if (e.key === 'r' || e.key === 'R') {
+        if (snap.trump.suit && !snap.trump.revealed) st.revealTrump();
+        return;
+      }
+      if (e.key === 'm' || e.key === 'M') {
+        st.declareMarriage();
+        return;
+      }
       const n = Number(e.key);
       if (n >= 1 && n <= 8) {
-        const hand = snapshot.players[you]?.hand ?? [];
-        const card = hand[n - 1];
+        const cards = snap.players[st.you]?.hand ?? [];
+        const card = cards[n - 1];
         if (card) onPlay(`${card.suit}${card.rank}`);
       }
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [snapshot, you, onPlay, revealTrump, declareMarriage]);
+  }, [onPlay, flying]);
 
   const tricksWon = useMemo(() => {
     const counts: Record<Seat, number> = {
@@ -357,6 +373,21 @@ export function GameTable() {
     Boolean(snapshot.trump.suit) &&
     !snapshot.trump.revealed;
   const showActions = snapshot.phase === GamePhase.Playing;
+
+  const handCards = (snapshot.players[you]?.hand ?? []).map((c) => Card.fromJSON(c));
+  const canDeclareMarriage = (() => {
+    if (snapshot.phase !== GamePhase.Playing) return false;
+    if (!snapshot.trump.revealed || !snapshot.trump.suit || !snapshot.contractTeam) return false;
+    const trump = snapshot.trump.suit as Suit;
+    if (!hasMarriage(handCards, trump)) return false;
+    const team = teamForSeat(you);
+    if (snapshot.marriage.declarations.some((d) => d.team === team)) return false;
+    if (snapshot.rules.marriageRequiresWonTrick) {
+      const teamSeats = ALL_SEATS.filter((s) => teamForSeat(s) === team);
+      if (!snapshot.tricksWonSinceReveal.some((s) => teamSeats.includes(s as Seat))) return false;
+    }
+    return true;
+  })();
 
   return (
     <div className="h-full w-full min-h-0 flex flex-col overflow-visible">
@@ -663,9 +694,10 @@ export function GameTable() {
           <button
             type="button"
             onClick={() => declareMarriage()}
+            disabled={!canDeclareMarriage}
             title="Declare marriage (M)"
             aria-label="Declare marriage"
-            className="absolute bottom-3 left-3 z-30 pointer-events-auto flex flex-col items-center justify-center gap-0.5 rounded-2xl bg-black/55 text-cream border border-gold/40 hover:bg-black/70 hover:border-gold/65 shadow-lg backdrop-blur-sm transition"
+            className="absolute bottom-3 left-3 z-30 pointer-events-auto flex flex-col items-center justify-center gap-0.5 rounded-2xl bg-black/55 text-cream border border-gold/40 hover:bg-black/70 hover:border-gold/65 disabled:opacity-35 disabled:cursor-not-allowed shadow-lg backdrop-blur-sm transition"
             style={{
               width: Math.round(cardWidths.actionH * 1.4),
               minHeight: cardWidths.actionH,

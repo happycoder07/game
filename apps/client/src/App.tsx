@@ -143,8 +143,13 @@ export default function App() {
       </AnimatePresence>
 
       {!inGame && (
-        <div className="flex-1 min-h-0 overflow-y-auto">
+        <div className="flex-1 min-h-0 overflow-y-auto flex flex-col gap-2 px-2 pb-2">
           <Lobby />
+          {mode === 'online' && room && (
+            <div className="max-w-md mx-auto w-full">
+              <ChatPanel />
+            </div>
+          )}
         </div>
       )}
 

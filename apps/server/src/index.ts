@@ -158,6 +158,10 @@ async function main(): Promise<void> {
                 type: 'PlayerLeft',
                 playerId: id,
               } satisfies ServerMessage);
+              io.to(room.code).emit('message', {
+                type: 'RoomUpdated',
+                room: room.toInfo(),
+              } satisfies ServerMessage);
             }
             break;
           }
@@ -197,6 +201,10 @@ async function main(): Promise<void> {
         io.to(room.code).emit('message', {
           type: 'PlayerLeft',
           playerId: id,
+        } satisfies ServerMessage);
+        io.to(room.code).emit('message', {
+          type: 'RoomUpdated',
+          room: room.toInfo(),
         } satisfies ServerMessage);
       }
     });
